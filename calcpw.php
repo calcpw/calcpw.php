@@ -1,7 +1,7 @@
 #!/usr/bin/env php
 <?php
 
-  # calcpw.php v0.1b0
+  # calcpw.php v0.1b1
   #
   # Copyright (c) 2022, Yahe
   # All rights reserved.
@@ -66,7 +66,7 @@
 
   # set default parameters for generated passwords
   define("DEFAULT_CHARSET", "0-9 A-Z a-z");
-  define("DEFAULT_FORCE",   false);
+  define("DEFAULT_ENFORCE", false);
   define("DEFAULT_LENGTH",  16);
 
   # this will be dependent on the speed of the Raspberry Pi Pico
@@ -80,7 +80,7 @@
 
   # define info flags to trigger modified password generation
   define("FLAG_CHARSET", '*'); 
-  define("FLAG_FORCE",   '!');
+  define("FLAG_ENFORCE", '!');
   define("FLAG_LENGTH",  '#');
 
   # define execution mode values
@@ -329,14 +329,17 @@
           # with the last character of the range (e.g. 0-9 or A-Z or a-z)
           case 0x2D: {
             # we encountered a minus, if we have not encountered
-            # a character before then we just add it to the
-            # character group, otherwise this might be a range
-            $range = (null !== $first);
-            if (!$range) {
-              $result[count($result)-1][] = $string[$i];
-            }
+            # a character before then we just handle it like any
+            # other character, otherwise this might be a range
+            if ((null !== $first) && (!$range)) {
+              $range = true;
 
-            break;
+              break;
+            } else {
+              # this cannot be a range so we continue with the
+              # the default handling characters by falling through
+              # to the default case
+            }
           }
 
           default: {
@@ -454,12 +457,12 @@
   # the information string uses in-line-signalling to trigger
   # the querying of additional information, the information
   # string is parsed and the triggered queries are executed here
-  function parseinfo($info, &$value, &$length, &$charset, &$force, $mode = MODE_DEFAULT, $characterset = null) {
+  function parseinfo($info, &$value, &$length, &$charset, &$enforce, $mode = MODE_DEFAULT, $characterset = null) {
     $result = false;
 
     # set the defaults
     $charset = parsecharset(DEFAULT_CHARSET);
-    $force   = DEFAULT_FORCE;
+    $enforce = DEFAULT_ENFORCE;
     $length  = DEFAULT_LENGTH;
     $value   = null;
 
@@ -469,7 +472,7 @@
 
       # we have not encountered trigger flags
       $flag_charset = false;
-      $flag_force   = false;
+      $flag_enforce = false;
       $flag_length  = false;
 
       $pos = -1;
@@ -480,8 +483,8 @@
         # to be alphanumeric
         if (FLAG_CHARSET === $info[$i]) {
           $flag_charset = true;
-        } elseif (FLAG_FORCE === $info[$i]) {
-          $flag_force = true;
+        } elseif (FLAG_ENFORCE === $info[$i]) {
+          $flag_enforce = true;
         } elseif (FLAG_LENGTH === $info[$i]) {
           $flag_length = true;
         } elseif (((0x30 <= ord($info[$i])) && (0x39 >= ord($info[$i]))) ||
@@ -499,7 +502,7 @@
       }
       if (0 >= strlen($value)) {
         println("");
-        println("ERROR: The information value must not be empty.");
+        println("ERROR: information value must not be empty");
         println("");
 
         $result = false;
@@ -511,9 +514,15 @@
             # handle password length
             if ($flag_length) {
               $length = intval(readtext("Length", strval(DEFAULT_LENGTH)));
-              if ((0 >= $length) || (1024 < $length)) {
+              if (0 >= $length) {
                 println("");
-                println("ERROR: The length must be between 1 and 1024.");
+                println("ERROR: length must be larger than 0");
+                println("");
+
+                $result = false;
+              } elseif (1024 < $length) {
+                println("");
+                println("ERROR: length must be smaller than or equal to 1024");
                 println("");
 
                 $result = false;
@@ -527,7 +536,7 @@
               $charset = parsecharset(readtext("Characterset", DEFAULT_CHARSET));
               if (!is_array($charset)) {
                 println("");
-                println("ERROR: A valid character set must be provided.");
+                println("ERROR: character set is malformed");
                 println("");
 
                 $result = false;
@@ -536,17 +545,17 @@
           }
 
           if ($result) {
-            # handle password force charset
-            $force = $flag_force;
-            if ($force) {
+            # handle password enforce charset
+            $enforce = $flag_enforce;
+            if ($enforce) {
               println("Enforce: true");
             }
 
             # prevent us from entering an infinite loop as we
             # might not be able to enforce the character groups
-            if ($force && (count($charset) > $length)) {
+            if ($enforce && (count($charset) > $length)) {
               println("");
-              println("ERROR: You cannot enforce a character set with more groups than the password length.");
+              println("ERROR: length is smaller than the number of enforced character groups");
               println("");
 
               $result = false;
@@ -587,7 +596,7 @@
     if (is_string($pass) &&
         is_string($info) &&
         is_int($mode)) {
-      if (parseinfo($info, $value, $length, $charset, $force, $mode, $characterset)) {
+      if (parseinfo($info, $value, $length, $charset, $enforce, $mode, $characterset)) {
         # flatten the charset to be more time-constant during
         # the encoding, this way we do not have to switch between
         # arrays based on the random data, the generation of the
@@ -638,7 +647,7 @@
 
                     # enforce the character groups if the length of
                     # the requested password is reached
-                    if ($force && (strlen($result) >= $length)) {
+                    if ($enforce && (strlen($result) >= $length)) {
                       $full = true;
                       for ($a = 0; $a < count($charset); $a++) {
                         $partial = false;
@@ -774,29 +783,27 @@
       do {
         $pass = readtext("Password", "", "*");
 
-        if (null === $pass) {
+        if (!mb_check_encoding($pass, "ASCII")) {
           println("");
-          println("ERROR: The password must not be empty.");
+          println("ERROR: password contains illegal characters");
+          println("");
+
+          # retry
+          $pass = null;
+        } elseif (null === $pass) {
+          println("");
+          println("ERROR: password must not be empty");
           println("");
         } else {
           $repeat = readtext("Password", "", "*");
 
-          if (null === $repeat) {
+          if (!hash_equals($pass, $repeat)) {
             println("");
-            println("ERROR: The password must not be empty.");
+            println("ERROR: passwords do not match");
             println("");
 
             # retry
             $pass = null;
-          } else {
-            if (!hash_equals($pass, $repeat)) {
-              println("");
-              println("ERROR: The passwords do not match.");
-              println("");
-
-              # retry
-              $pass = null;
-            }
           }
         }
       } while (null === $pass);
@@ -806,9 +813,13 @@
       do {
         $info = readtext("Information");
 
-        if (null === $info) {
+        if (!mb_check_encoding($info, "ASCII")) {
           println("");
-          println("ERROR: The information must not be empty.");
+          println("ERROR: information contains illegal characters");
+          println("");
+        } elseif (null === $info) {
+          println("");
+          println("ERROR: information must not be empty");
           println("");
         } else {
           $calculated = calcpw($pass, $info, MODE_DEFAULT, null);
