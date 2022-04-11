@@ -70,7 +70,7 @@
   define("DEFAULT_LENGTH",  16);
 
   # this will be dependent on the speed of the Raspberry Pi Pico
-  define("PBKDF2_ITERATIONS", 1000);
+  define("PBKDF2_ITERATIONS", 512000);
 
   # ===== DO NOT EDIT HERE =====
 

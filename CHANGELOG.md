@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1b2 (11.04.2022)
+
+* Feature: increase PBKDF2 iteration count to 512000 as a default
+
 ## v0.1b1 (11.04.2022)
 
 * Bug: improved handling of minus character outside of ranges
