@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2b1 (16.11.2022)
+
+* Bug: fix notices introduced with PHP 8.0
+* Feature: do not require trigger flags but always ask for all relevant password configuration
+
 ## v0.1b2 (11.04.2022)
 
 * Feature: increase PBKDF2 iteration count to 512000 as a default

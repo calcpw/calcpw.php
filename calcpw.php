@@ -1,7 +1,7 @@
 #!/usr/bin/env php
 <?php
 
-  # calcpw.php v0.1b1
+  # calcpw.php v0.2b1
   #
   # Copyright (c) 2022, Yahe
   # All rights reserved.
@@ -21,23 +21,21 @@
   # an encoding function to produce pseudorandom but reproducible passwords from a secret password and a
   # service-dependent information.
   #
-  # The password calculation can be modified by prepending trigger flags to the information value:
+  # The password calculation can be modified by setting additional configuration values:
   #
-  #   # the hash sign triggers the querying of a modified password length, the password must not be longer than
-  #     1024 characters, the limit has been introduced as the password calculation is meant to be implemented on
-  #     a microcontroller later on which will have memory constraints
+  # * calc.pw queries a modifiable password length, the password must not be longer than 1024 characters, the
+  #   limit has been introduced as the password calculation is meant to be implemented on a microcontroller later
+  #   on which will have memory constraints
   #
-  #   * the star sign triggers the querying of a modified character set, the character set defines which characters
-  #     may occur in the calculated password, the character set consists of one ore more character groups which are
-  #     split by spaces, character groups are relevant for the enforcement mode, to simplify the definition of the
-  #     character set it is possible to define ranges from a first character to a last character by using a minus
-  #     sign (e.g. 0-9 or A-Z or a-z)
+  # * calc.pw queries a modifiable character set, the character set defines which characters may occur in the
+  #   calculated password, the character set consists of one ore more character groups which are split by spaces,
+  #   character groups are relevant for the enforcement mode, to simplify the definition of the character set it
+  #   is possible to define ranges from a first character to a last character by using a minus sign (e.g. `0-9`
+  #   or `A-Z` or `a-z`)
   #
-  #   ! the exclamation sign activates the enforcement mode, the enforcement mode makes sure that at least one
-  #     character from each character group is contained within the calculated password, the password calculation
-  #     will continue until a valid password has been calculated
-  #
-  # When no trigger flag is provided then senseful defaults are used.
+  # * calc.pw queries a modifiable enforcement mode, the enforcement mode makes sure that at least one character
+  #   from each character group is contained within the calculated password, the password calculation will continue
+  #   until a valid password has been calculated
   #
   #
   # execution:
@@ -77,11 +75,6 @@
   # define argument to execute test modes
   define("ARG_DIEHARDER",  "--dieharder");
   define("ARG_MODULOBIAS", "--modulobias");
-
-  # define info flags to trigger modified password generation
-  define("FLAG_CHARSET", '*'); 
-  define("FLAG_ENFORCE", '!');
-  define("FLAG_LENGTH",  '#');
 
   # define execution mode values
   define("MODE_DEFAULT",    0);
@@ -212,7 +205,7 @@
             # sleep a bit to not use up the whole CPU
             usleep(10000);
           }
-        } while ((0x0A !== ord($char1)) && (0x0D !== ord($char1)));
+        } while ((null === $char1) || ((0x0A !== ord($char1)) && (0x0D !== ord($char1))));
 
         if (0 < strlen($string)) {
           $result = $string;
@@ -220,8 +213,8 @@
       } finally {
         readline_callback_handler_remove();
         stream_set_blocking(STDIN, true);
-      } 
-    } 
+      }
+    }
 
     return $result;
   }
@@ -248,7 +241,7 @@
     return $result;
   }
 
-  # PHP provides such a function but the standard library 
+  # PHP provides such a function but the standard library
   # of the Raspberry Pi Pico may not so we implement it
   # ourselves
   function sortarray($array) {
@@ -454,133 +447,80 @@
     return $result;
   }
 
-  # the information string uses in-line-signalling to trigger
-  # the querying of additional information, the information
-  # string is parsed and the triggered queries are executed here
-  function parseinfo($info, &$value, &$length, &$charset, &$enforce, $mode = MODE_DEFAULT, $characterset = null) {
-    $result = false;
+  # in addition to the info there are other configuration values that need to be queried
+  function queryconfig(&$length, &$charset, &$enforce, $mode = MODE_DEFAULT, $characterset = null) {
+    $result = true;
 
     # set the defaults
     $charset = parsecharset(DEFAULT_CHARSET);
     $enforce = DEFAULT_ENFORCE;
     $length  = DEFAULT_LENGTH;
-    $value   = null;
 
-    if (is_string($info)) {
-      # we assume that we will be successful
-      $result = true;
+    switch ($mode) {
+      case MODE_DEFAULT : {
+        if ($result) {
+          # handle password length
+          $length = intval(readtext("Length", strval(DEFAULT_LENGTH)));
+          if (0 >= $length) {
+            println("");
+            println("ERROR: length must be larger than 0");
+            println("");
 
-      # we have not encountered trigger flags
-      $flag_charset = false;
-      $flag_enforce = false;
-      $flag_length  = false;
+            $result = false;
+          } elseif (1024 < $length) {
+            println("");
+            println("ERROR: length must be smaller than or equal to 1024");
+            println("");
 
-      $pos = -1;
-      for ($i = 0; $i < strlen($info); $i++) {
-        # we read the information and try to identify trigger
-        # flags, trigger flags are special characters so the
-        # first character of the actual information value needs
-        # to be alphanumeric
-        if (FLAG_CHARSET === $info[$i]) {
-          $flag_charset = true;
-        } elseif (FLAG_ENFORCE === $info[$i]) {
-          $flag_enforce = true;
-        } elseif (FLAG_LENGTH === $info[$i]) {
-          $flag_length = true;
-        } elseif (((0x30 <= ord($info[$i])) && (0x39 >= ord($info[$i]))) ||
-                  ((0x41 <= ord($info[$i])) && (0x5A >= ord($info[$i]))) ||
-                  ((0x61 <= ord($info[$i])) && (0x7A >= ord($info[$i])))) {
-          $pos = $i;
-
-          break;
+            $result = false;
+          }
         }
+
+        if ($result) {
+          # handle password charset
+          $charset = parsecharset(readtext("Characterset", DEFAULT_CHARSET));
+          if (!is_array($charset)) {
+            println("");
+            println("ERROR: character set is malformed");
+            println("");
+
+            $result = false;
+          }
+        }
+
+        if ($result) {
+          # handle password enforce charset
+          $enforce = filter_var(readtext("Enforce", ($enforce) ? "true" : "false"), FILTER_VALIDATE_BOOLEAN);
+
+          # prevent us from entering an infinite loop as we
+          # might not be able to enforce the character groups
+          if ($enforce && (count($charset) > $length)) {
+            println("");
+            println("ERROR: length is smaller than the number of enforced character groups");
+            println("");
+
+            $result = false;
+          }
+        }
+
+        break;
       }
 
-      # handle information value
-      if (0 <= $pos) {
-        $value = substr($info, $pos);
-      }
-      if (0 >= strlen($value)) {
-        println("");
-        println("ERROR: information value must not be empty");
-        println("");
-
-        $result = false;
+      case MODE_DIEHARDER : {
+        # we do nothing
+        break;
       }
 
-      switch ($mode) {
-        case MODE_DEFAULT : {
-          if ($result) {
-            # handle password length
-            if ($flag_length) {
-              $length = intval(readtext("Length", strval(DEFAULT_LENGTH)));
-              if (0 >= $length) {
-                println("");
-                println("ERROR: length must be larger than 0");
-                println("");
-
-                $result = false;
-              } elseif (1024 < $length) {
-                println("");
-                println("ERROR: length must be smaller than or equal to 1024");
-                println("");
-
-                $result = false;
-              }
-            }
+      case MODE_MODULOBIAS : {
+        # only handle the given character set if it is not null
+        if (null !== $characterset) {
+          $charset = parsecharset($characterset);
+          if (!is_array($charset)) {
+            $result = false;
           }
-
-          if ($result) {
-            # handle password charset
-            if ($flag_charset) {
-              $charset = parsecharset(readtext("Characterset", DEFAULT_CHARSET));
-              if (!is_array($charset)) {
-                println("");
-                println("ERROR: character set is malformed");
-                println("");
-
-                $result = false;
-              }
-            }
-          }
-
-          if ($result) {
-            # handle password enforce charset
-            $enforce = $flag_enforce;
-            if ($enforce) {
-              println("Enforce: true");
-            }
-
-            # prevent us from entering an infinite loop as we
-            # might not be able to enforce the character groups
-            if ($enforce && (count($charset) > $length)) {
-              println("");
-              println("ERROR: length is smaller than the number of enforced character groups");
-              println("");
-
-              $result = false;
-            }
-          }
-
-          break;
         }
 
-        case MODE_DIEHARDER : {
-          # we do nothing
-          break;
-        }
-
-        case MODE_MODULOBIAS : {
-          # only handle the given character set if it is not null
-          if (null !== $characterset) {
-            $charset = parsecharset($characterset);
-            if (!is_array($charset)) {
-              $result = false;
-            }
-          }
-
-          break;
-        }
+        break;
       }
     }
 
@@ -596,11 +536,11 @@
     if (is_string($pass) &&
         is_string($info) &&
         is_int($mode)) {
-      if (parseinfo($info, $value, $length, $charset, $enforce, $mode, $characterset)) {
+      if (queryconfig($length, $charset, $enforce, $mode, $characterset)) {
         # flatten the charset to be more time-constant during
         # the encoding, this way we do not have to switch between
         # arrays based on the random data, the generation of the
-        # password is also more reproducible as we sort and 
+        # password is also more reproducible as we sort and
         # deduplicate everything
         $characters = [];
         for ($i = 0; $i < count($charset); $i++) {
@@ -615,11 +555,11 @@
         $max = floor(0x100 / count($characters)) * count($characters);
 
         # key derivation
-        $pbkdf2 = hash_pbkdf2("sha256", $pass, $value, PBKDF2_ITERATIONS, 0, true);
+        $pbkdf2 = hash_pbkdf2("sha256", $pass, $info, PBKDF2_ITERATIONS, 0, true);
         if (false !== $pbkdf2) {
           # random IV generation
           $counter = openssl_encrypt(hex2bin("00000000000000000000000000000000"), "aes-256-ecb",
-                                     $pbkdf2, OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING, null);
+                                     $pbkdf2, OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING, "");
 
           if (false !== $counter) {
             $result = "";
@@ -628,7 +568,7 @@
             do {
               # get one block of randomness
               $block = openssl_encrypt($counter, "aes-256-ecb",
-                                       $pbkdf2, OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING, null);
+                                       $pbkdf2, OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING, "");
 
               # handle block based on the execution mode
               switch ($mode) {
