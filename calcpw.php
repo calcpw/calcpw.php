@@ -3,7 +3,7 @@
 
   # calcpw.php v0.2b1
   #
-  # Copyright (c) 2022, Yahe
+  # Copyright (c) 2022-2023, Yahe
   # All rights reserved.
   #
   #
