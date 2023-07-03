@@ -31,7 +31,7 @@ To execute the script you have to call it in the following way:
 
 * `--dieharder` : (OPTIONAL) to test the strength of the random number generator the script supports a way to output raw pseudorandom data to STDOUT which can then be used by dieharder, when the dieharder mode is used, the parameters `<password>` and `<information>` must be provided as well
 
-* `--modulobias` : (OPTIONAL) the test the resistance of the password encoding against modulo bias the script supports a way to output encoded psuedorandom data to STDOUT which can then be used by a modulo bias test, when the modulo bias mode is used, the parameters `<password>` and `<information>` must be provided as well while the parameter `<characterset>` may be provided as well
+* `--modulobias` : (OPTIONAL) to test the resistance of the password encoding against modulo bias the script supports a way to output encoded psuedorandom data to STDOUT which can then be used by a modulo bias test, when the modulo bias mode is used, the parameters `<password>` and `<information>` must be provided as well while the parameter `<characterset>` may be provided as well
 
 * `<password>` : (OPTIONAL) when the dieharder or modulo bias mode is used then the information must be provided
 

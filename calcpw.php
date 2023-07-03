@@ -1,7 +1,7 @@
 #!/usr/bin/env php
 <?php
 
-  # calcpw.php v0.2b1
+  # calcpw.php v0.2b2
   #
   # Copyright (c) 2022-2023, Yahe
   # All rights reserved.
@@ -49,7 +49,7 @@
   #                           raw pseudorandom data to STDOUT which can then be used by dieharder, when the dieharder
   #                           mode is used, the parameters <password> and <information> must be provided as well
   #
-  # --modulobias   (OPTIONAL) the test the resistance of the password encoding against modulo bias the script supports
+  # --modulobias   (OPTIONAL) to test the resistance of the password encoding against modulo bias the script supports
   #                           a way to output encoded psuedorandom data to STDOUT which can then be used by a modulo
   #                           bias test, when the modulo bias mode is used, the parameters <password> and <information>
   #                           must be provided as well while the parameter <characterset> may be provided as well

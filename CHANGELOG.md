@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2b2 (03.07.2023)
+
+* fix typo in the documentation
+
 ## v0.2b1 (16.11.2022)
 
 * Bug: fix notices introduced with PHP 8.0
