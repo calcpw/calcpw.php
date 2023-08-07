@@ -1,7 +1,7 @@
 #!/usr/bin/env php
 <?php
 
-  # calcpw.php v0.2b2
+  # calcpw.php v0.3b0
   #
   # Copyright (c) 2022-2023, Yahe
   # All rights reserved.
@@ -86,7 +86,7 @@
   }
 
   # based on https://stackoverflow.com/a/51747444 but heavily rewritten
-  function readtext($text = "", $default = "", $replace_char = null) {
+  function readText($text = "", $default = "", $replace_char = null) {
     $result = null;
 
     if (readline_callback_handler_install("", function(){}) && (stream_set_blocking(STDIN, false))) {
@@ -222,7 +222,7 @@
   # PHP provides such a function but the standard library
   # of the Raspberry Pi Pico may not so we implement it
   # ourselves
-  function deduplicatearray($array) {
+  function deduplicateArray($array) {
     $result = null;
 
     if (is_array($array)) {
@@ -244,7 +244,7 @@
   # PHP provides such a function but the standard library
   # of the Raspberry Pi Pico may not so we implement it
   # ourselves
-  function sortarray($array) {
+  function sortArray($array) {
     $result = null;
 
     if (is_array($array)) {
@@ -268,7 +268,7 @@
   # parse the character set string and generate a
   # two-dimensional array so we know which characters
   # are valid in an encoded password
-  function parsecharset($string) {
+  function parseCharset($string) {
     $result = null;
 
     if (is_string($string)) {
@@ -398,10 +398,10 @@
         # groups are sorted and deduplicated
         for ($i = 0; $i < count($result); $i++) {
           # sort the character group
-          $result[$i] = sortarray($result[$i]);
+          $result[$i] = sortArray($result[$i]);
 
           # deduplicate the character group
-          $result[$i] = deduplicatearray($result[$i]);
+          $result[$i] = deduplicateArray($result[$i]);
         }
 
         # finally sort the character groups based on the first
@@ -447,12 +447,39 @@
     return $result;
   }
 
+  # the information string normally uses in-line-signalling to trigger
+  # the querying of additional information, but with a graphical UI we
+  # can display corresponding input fields directly, therefore we just
+  # cut away the trigger flags and return the actual information value
+  function parseInfo($information) {
+    $result = "";
+
+    $pos = -1;
+    for ($i = 0; $i < strlen($information); $i++) {
+      # the first character of the actual information value needs to be alphanumeric
+      if (((0x30 <= ord($information[$i])) && (0x39 >= ord($information[$i]))) ||
+          ((0x41 <= ord($information[$i])) && (0x5A >= ord($information[$i]))) ||
+          ((0x61 <= ord($information[$i])) && (0x7A >= ord($information[$i])))) {
+        $pos = $i;
+
+        break;
+      }
+    }
+
+    # handle information value
+    if (0 <= $pos) {
+      $result = substr($information, $pos);
+    }
+
+    return $result;
+  }
+
   # in addition to the info there are other configuration values that need to be queried
-  function queryconfig(&$length, &$charset, &$enforce, $mode = MODE_DEFAULT, $characterset = null) {
+  function queryConfig(&$length, &$charset, &$enforce, $mode = MODE_DEFAULT, $characterset = null) {
     $result = true;
 
     # set the defaults
-    $charset = parsecharset(DEFAULT_CHARSET);
+    $charset = parseCharset(DEFAULT_CHARSET);
     $enforce = DEFAULT_ENFORCE;
     $length  = DEFAULT_LENGTH;
 
@@ -460,7 +487,7 @@
       case MODE_DEFAULT : {
         if ($result) {
           # handle password length
-          $length = intval(readtext("Length", strval(DEFAULT_LENGTH)));
+          $length = intval(readText("Length", strval(DEFAULT_LENGTH)));
           if (0 >= $length) {
             println("");
             println("ERROR: length must be larger than 0");
@@ -478,7 +505,7 @@
 
         if ($result) {
           # handle password charset
-          $charset = parsecharset(readtext("Characterset", DEFAULT_CHARSET));
+          $charset = parseCharset(readText("Characterset", DEFAULT_CHARSET));
           if (!is_array($charset)) {
             println("");
             println("ERROR: character set is malformed");
@@ -490,7 +517,7 @@
 
         if ($result) {
           # handle password enforce charset
-          $enforce = filter_var(readtext("Enforce", ($enforce) ? "true" : "false"), FILTER_VALIDATE_BOOLEAN);
+          $enforce = filter_var(readText("Enforce", ($enforce) ? "true" : "false"), FILTER_VALIDATE_BOOLEAN);
 
           # prevent us from entering an infinite loop as we
           # might not be able to enforce the character groups
@@ -514,7 +541,7 @@
       case MODE_MODULOBIAS : {
         # only handle the given character set if it is not null
         if (null !== $characterset) {
-          $charset = parsecharset($characterset);
+          $charset = parseCharset($characterset);
           if (!is_array($charset)) {
             $result = false;
           }
@@ -536,7 +563,7 @@
     if (is_string($pass) &&
         is_string($info) &&
         is_int($mode)) {
-      if (queryconfig($length, $charset, $enforce, $mode, $characterset)) {
+      if (queryConfig($length, $charset, $enforce, $mode, $characterset)) {
         # flatten the charset to be more time-constant during
         # the encoding, this way we do not have to switch between
         # arrays based on the random data, the generation of the
@@ -548,18 +575,24 @@
             $characters[] = $charset[$i][$j];
           }
         }
-        $characters = sortarray($characters);
-        $characters = deduplicatearray($characters);
+        $characters = sortArray($characters);
+        $characters = deduplicateArray($characters);
 
         # get the max random number we can use to prevent modulo bias later on
         $max = floor(0x100 / count($characters)) * count($characters);
+
+        # prepare the values
+        $info = parseInfo($info);
 
         # key derivation
         $pbkdf2 = hash_pbkdf2("sha256", $pass, $info, PBKDF2_ITERATIONS, 0, true);
         if (false !== $pbkdf2) {
           # random IV generation
-          $counter = openssl_encrypt(hex2bin("00000000000000000000000000000000"), "aes-256-ecb",
-                                     $pbkdf2, OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING, "");
+          $counter = openssl_encrypt("\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+                                     "aes-256-ecb",
+                                     $pbkdf2,
+                                     OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING,
+                                     "");
 
           if (false !== $counter) {
             $result = "";
@@ -567,8 +600,11 @@
             # key expansion and and encoding
             do {
               # get one block of randomness
-              $block = openssl_encrypt($counter, "aes-256-ecb",
-                                       $pbkdf2, OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING, "");
+              $block = openssl_encrypt($counter,
+                                       "aes-256-ecb",
+                                       $pbkdf2,
+                                       OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING,
+                                       "");
 
               # handle block based on the execution mode
               switch ($mode) {
@@ -721,23 +757,37 @@
     } else {
       # handle normal execution
       do {
-        $pass = readtext("Password", "", "*");
+        $pass = readText("Password", "", "*");
 
-        if (!mb_check_encoding($pass, "ASCII")) {
+        if (null === $pass) {
+          println("");
+          println("ERROR: password must not be empty");
+          println("");
+        } elseif (!mb_check_encoding($pass, "ASCII")) {
           println("");
           println("ERROR: password contains illegal characters");
           println("");
 
           # retry
           $pass = null;
-        } elseif (null === $pass) {
-          println("");
-          println("ERROR: password must not be empty");
-          println("");
         } else {
-          $repeat = readtext("Password", "", "*");
+          $repeat = readText("Password", "", "*");
 
-          if (!hash_equals($pass, $repeat)) {
+          if (null === $repeat) {
+            println("");
+            println("ERROR: password must not be empty");
+            println("");
+
+            # retry
+            $pass = null;
+          } elseif (!mb_check_encoding($repeat, "ASCII")) {
+            println("");
+            println("ERROR: password contains illegal characters");
+            println("");
+          
+            # retry 
+            $pass = null;
+          } elseif (!hash_equals($pass, $repeat)) {
             println("");
             println("ERROR: passwords do not match");
             println("");
@@ -751,15 +801,15 @@
       println("");
 
       do {
-        $info = readtext("Information");
+        $info = readText("Information");
 
-        if (!mb_check_encoding($info, "ASCII")) {
-          println("");
-          println("ERROR: information contains illegal characters");
-          println("");
-        } elseif (null === $info) {
+        if (null === $info) {
           println("");
           println("ERROR: information must not be empty");
+          println("");
+        } elseif (!mb_check_encoding($info, "ASCII")) {
+          println("");
+          println("ERROR: information contains illegal characters");
           println("");
         } else {
           $calculated = calcpw($pass, $info, MODE_DEFAULT, null);

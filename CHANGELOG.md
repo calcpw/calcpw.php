@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3b0 (07.08.2023)
+
+* improve input verification
+* apply same information handling as in iOS app
+
 ## v0.2b2 (03.07.2023)
 
 * fix typo in the documentation
