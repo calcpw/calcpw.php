@@ -597,7 +597,7 @@
           if (false !== $counter) {
             $result = "";
 
-            # key expansion and and encoding
+            # key expansion and encoding
             do {
               # get one block of randomness
               $block = openssl_encrypt($counter,
